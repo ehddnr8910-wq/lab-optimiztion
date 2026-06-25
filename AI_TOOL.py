@@ -557,64 +557,64 @@ if uploaded_file is not None:
 
                     # ── SigmaPlot 데이터 추출 (3D) ───────────────────────────
                     with st.expander("📥 SigmaPlot용 데이터 추출 (3D 반응 표면 그래프)"):
-                        st.caption("SigmaPlot 3D Mesh/Surface 또는 Scatter 3D 그래프에 사용할 수 있는 CSV입니다.")
 
-                        # ── (1) SigmaPlot Matrix 형식 (행=X, 열=Y, 셀=Z) ──
-                        # SigmaPlot 3D Surface는 피벗 테이블(Grid) 구조를 요구함
-                        # 첫 번째 행: Y값 헤더 (빈 셀 + Y값들)
-                        # 이후 행: X값 | Z값들
-                        y_labels = np.round(y_range, 4)   # 열 헤더 = Y축 값
-                        x_labels = np.round(x_range, 4)   # 행 인덱스 = X축 값
+                        st.markdown(f"""
+**📌 SigmaPlot 사용 순서**
+1. 아래 CSV 다운로드 → Excel로 열기
+2. **헤더 포함** 전체 복사 (Ctrl+A → Ctrl+C)
+3. SigmaPlot **새 워크시트** A1에 붙여넣기
+4. `Graph → Create Graph → 3D → Surface Plot`
+5. Data Format: **XYZ Triplet** 선택
+6. A열({x_axis}) → X / B열({y_axis}) → Y / C열({y_col_name}) → Z 지정
+""")
 
-                        # Z_mesh shape: (len(y_range), len(x_range)) — meshgrid 구조
-                        # SigmaPlot: 행이 X, 열이 Y → Z_mesh.T 사용
-                        df_pivot = pd.DataFrame(
-                            Z_mesh.T,
-                            index=x_labels,
-                            columns=y_labels
-                        )
-                        df_pivot.index.name = f"{x_axis} \\ {y_axis}"
-
-                        # ── (2) 실험 데이터 산점 (XYZ 3열) ──
-                        df_3d_scatter = pd.DataFrame({
-                            f"X_{x_axis}_exp": df[x_axis].values,
-                            f"Y_{y_axis}_exp": df[y_axis].values,
-                            f"Z_{y_col_name}_exp": df[y_col_name].values
+                        # ── Surface XYZ (헤더 단순화: SigmaPlot 호환) ──
+                        df_3d_surface = pd.DataFrame({
+                            x_axis:         X_mesh.flatten(),   # A열
+                            y_axis:         Y_mesh.flatten(),   # B열
+                            y_col_name:     Z_mesh.flatten()    # C열
                         })
 
-                        # 두 탭으로 분리 출력
-                        tab_surf, tab_scat = st.tabs(["Surface Matrix (SigmaPlot용)", "Experimental Scatter 데이터"])
+                        tab_surf, tab_scat = st.tabs(["Surface XYZ (예측)", "Experimental XYZ (실험)"])
+
                         with tab_surf:
-                            st.caption(f"📌 행(Row) = {x_axis} 값 / 열(Column) = {y_axis} 값 / 셀 = 예측 {y_col_name}")
-                            st.caption("SigmaPlot: Graph → 3D → Surface Plot → XYZ Matrix 선택 후 이 데이터를 붙여넣기")
-                            st.dataframe(df_pivot.iloc[:10, :10], use_container_width=True)
-                            csv_surf = df_pivot.to_csv().encode('utf-8-sig')
+                            st.caption(f"총 {len(df_3d_surface)}행 | A={x_axis}, B={y_axis}, C={y_col_name}(예측값)")
+                            st.dataframe(df_3d_surface.head(20), use_container_width=True)
+                            csv_surf = df_3d_surface.to_csv(index=False).encode('utf-8-sig')
                             st.download_button(
-                                label="⬇️ CSV 다운로드 (3D Surface Matrix)",
+                                label="⬇️ CSV 다운로드 (Surface XYZ)",
                                 data=csv_surf,
-                                file_name=f"sigmaplot_3D_surface_{x_axis}_vs_{y_axis}.csv",
+                                file_name=f"SP_surface_{x_axis}_vs_{y_axis}.csv",
                                 mime="text/csv",
                                 key="dl_3d_surf"
                             )
+
+                        # ── Experimental Scatter XYZ ──
+                        df_3d_scatter = pd.DataFrame({
+                            x_axis:     df[x_axis].values,
+                            y_axis:     df[y_axis].values,
+                            y_col_name: df[y_col_name].values
+                        })
+
                         with tab_scat:
-                            st.caption("📌 SigmaPlot: Graph → 3D → Scatter Plot → XYZ 3열 선택")
+                            st.caption(f"실제 실험 데이터 {len(df_3d_scatter)}행 | 동일 열 순서(A/B/C)")
                             st.dataframe(df_3d_scatter, use_container_width=True)
                             csv_scat = df_3d_scatter.to_csv(index=False).encode('utf-8-sig')
                             st.download_button(
-                                label="⬇️ CSV 다운로드 (3D Experimental Scatter)",
+                                label="⬇️ CSV 다운로드 (Experimental XYZ)",
                                 data=csv_scat,
-                                file_name=f"sigmaplot_3D_scatter_{x_axis}_vs_{y_axis}.csv",
+                                file_name=f"SP_scatter_{x_axis}_vs_{y_axis}.csv",
                                 mime="text/csv",
                                 key="dl_3d_scat"
                             )
 
-                        # (3) 최적점 있으면 함께 출력
+                        # ── 최적점 ──
                         if st.session_state['opt_result'] and st.session_state['opt_model'] == model_option:
                             opt = st.session_state['opt_result']
                             df_3d_opt = pd.DataFrame({
-                                f"X_{x_axis}_opt": [opt.x[idx_x]],
-                                f"Y_{y_axis}_opt": [opt.x[idx_y]],
-                                f"Z_{y_col_name}_opt": [-opt.fun]
+                                x_axis:     [opt.x[idx_x]],
+                                y_axis:     [opt.x[idx_y]],
+                                y_col_name: [-opt.fun]
                             })
                             st.markdown("**최적점 좌표**")
                             st.dataframe(df_3d_opt, use_container_width=True)
@@ -622,7 +622,7 @@ if uploaded_file is not None:
                             st.download_button(
                                 label="⬇️ CSV 다운로드 (최적점)",
                                 data=csv_opt,
-                                file_name=f"sigmaplot_3D_optimum_{x_axis}_vs_{y_axis}.csv",
+                                file_name=f"SP_optimum_{x_axis}_vs_{y_axis}.csv",
                                 mime="text/csv",
                                 key="dl_3d_opt"
                             )
