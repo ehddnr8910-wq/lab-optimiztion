@@ -1,29 +1,9 @@
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import os
-
-# 한글 폰트 설정 함수
-def setup_korean_font():
-    # Streamlit Cloud (Linux) 환경의 나눔고딕 폰트 경로
-    font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
-    
-    # 폰트 파일이 존재하는지 확인 (서버 환경)
-    if os.path.exists(font_path):
-        font_prop = fm.FontProperties(fname=font_path)
-        plt.rc('font', family=font_prop.get_name())
-    else:
-        # 윈도우(로컬) 환경일 경우 'Malgun Gothic' 사용
-        plt.rc('font', family='Malgun Gothic')
-    
-    # 마이너스(-) 기호 깨짐 방지
-    plt.rcParams['axes.unicode_minus'] = False
-
-# 함수 실행
-setup_korean_font()
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import platform
 from sklearn.linear_model import LinearRegression, Ridge
@@ -35,17 +15,26 @@ from sklearn.model_selection import cross_val_score, KFold
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 # -----------------------------------------------------------------------------
-# [한글 폰트 설정] Matplotlib 한글 깨짐 해결 (OS 자동 감지)
+# [한글 폰트 설정]
 # -----------------------------------------------------------------------------
+def setup_korean_font():
+    font_path = '/usr/share/fonts/truetype/nanum/NanumGothic.ttf'
+    if os.path.exists(font_path):
+        font_prop = fm.FontProperties(fname=font_path)
+        plt.rc('font', family=font_prop.get_name())
+    else:
+        plt.rc('font', family='Malgun Gothic')
+    plt.rcParams['axes.unicode_minus'] = False
+
+setup_korean_font()
+
 system_name = platform.system()
 if system_name == 'Windows':
-    plt.rc('font', family='Malgun Gothic')  # 윈도우: 맑은 고딕
+    plt.rc('font', family='Malgun Gothic')
 elif system_name == 'Darwin':
-    plt.rc('font', family='AppleGothic')    # 맥: 애플 고딕
+    plt.rc('font', family='AppleGothic')
 else:
-    plt.rc('font', family='NanumGothic')    # 리눅스: 나눔 고딕 (설치 필요)
-
-# 마이너스(-) 기호가 깨지는 현상 방지
+    plt.rc('font', family='NanumGothic')
 plt.rcParams['axes.unicode_minus'] = False
 
 # -----------------------------------------------------------------------------
@@ -58,7 +47,7 @@ if 'opt_result' not in st.session_state:
 if 'opt_model' not in st.session_state:
     st.session_state['opt_model'] = None
 
-# [타이틀] 국문으로 전문성 있게 변경
+# [타이틀]
 st.title("🔬 소재 공정 최적화 & 인공지능 분석 시스템")
 st.markdown("""
 > **System Overview**
@@ -74,6 +63,7 @@ st.sidebar.header("⚙️ 시스템 설정 (Configuration)")
 
 uploaded_file = st.sidebar.file_uploader("📂 데이터 파일 업로드 (CSV)", type=["csv"])
 
+# 데이터가 로드되면 즉시 분석 시작
 if uploaded_file is not None:
     # 데이터 로딩
     df = pd.read_csv(uploaded_file)
@@ -91,7 +81,6 @@ if uploaded_file is not None:
         st.error("⛔ 분석할 독립 변수(X)를 1개 이상 선택하십시오.")
         st.stop()
 
-    # (주의) std, run 등의 불필요한 컬럼이 X인자에 포함되지 않도록 주의하라는 안내
     st.sidebar.caption("※ 실험번호(Run)나 분산(Std) 같은 단순 정보는 X인자에서 제외해주세요.")
 
     X = df[X_col_names].values
@@ -113,12 +102,12 @@ if uploaded_file is not None:
     noise_val = 0.1
     
     if model_option == "GPR (가우시안 프로세스)":
-        noise_val = st.sidebar.slider("오차 허용 범위 (Alpha)", 0.00, 0.50, 0.10, 0.01, help="값이 클수록 실험 오차를 관대하게 허용하며(부드러운 곡선), 작을수록 데이터를 엄격하게 따릅니다.")
+        noise_val = st.sidebar.slider("오차 허용 범위 (Alpha)", 0.00, 0.50, 0.10, 0.01, help="값이 클수록 실험 오차를 관대하게 허용하며, 작을수록 데이터를 엄격하게 따릅니다.")
     else: 
         noise_val = st.sidebar.slider("규제 강도 (Alpha)", 0.00, 2.00, 0.00, 0.10, help="모델의 과적합을 막기 위한 L2 규제 강도입니다.")
 
     # -------------------------------------------------------------------------
-    # 3. 모델 학습 및 성능 평가
+    # 3. 모델 학습 및 성능 평가 (버튼 없이 즉시 실행)
     # -------------------------------------------------------------------------
     st.subheader(f"📊 모델 성능 평가 리포트 ({model_option.split(' ')[0]})")
     
@@ -152,6 +141,11 @@ if uploaded_file is not None:
         y_train = y
         y_pred_train = model.predict(X_poly)
         
+        # 세션 저장 (RSM 계수 표 출력용)
+        st.session_state['real_rsm_reg'] = model      
+        st.session_state['real_rsm_poly'] = poly      
+        st.session_state['real_rsm_names'] = X_col_names 
+        
     elif model_option == "GPR (가우시안 프로세스)":
         scaler_X = StandardScaler()
         scaler_y = StandardScaler()
@@ -172,6 +166,12 @@ if uploaded_file is not None:
         pred_scaled = model.predict(X_scaled)
         y_pred_train = scaler_y.inverse_transform(pred_scaled.reshape(-1, 1)).flatten()
 
+    # 모델 및 스케일러 세션 저장 (최적화용)
+    st.session_state['trained_model'] = model
+    st.session_state['trained_poly'] = poly
+    st.session_state['scaler_X'] = scaler_X
+    st.session_state['scaler_y'] = scaler_y
+    
     # 기본 지표 계산
     rmse_score = np.sqrt(mean_squared_error(y, y_pred_train))
     mae_score = mean_absolute_error(y, y_pred_train)
@@ -184,85 +184,35 @@ if uploaded_file is not None:
     except:
         q2_score = 0.0
 
-    # [지표 출력] 국문 라벨 적용
+    # [지표 출력]
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("학습 정확도 ($R^2$)", f"{r2_score:.4f}")
     c2.metric("예측 정확도 ($Q^2_{CV}$)", f"{q2_score:.4f}")
     c3.metric("오차 (RMSE)", f"{rmse_score:.2f}")
     c4.metric("오차 (MAE)", f"{mae_score:.2f}")
 
-    # -------------------------------------------------------------------------
-    # [NEW] 고급 분석 지표 (TIC) - 국문 적용
-    # -------------------------------------------------------------------------
+    # 상세 오차 분석 (TIC)
     with st.expander("🔎 상세 오차 분석 (Theil's Inequality Coefficient) 보기"):
         st.markdown("###  오차 원인 정밀 분석 (TIC Decomposition)")
-        
         actual = np.array(y)
         predicted = np.array(y_pred_train)
         
-        # TIC 계산
         num = np.sqrt(np.mean((actual - predicted) ** 2))
         den = np.sqrt(np.mean(actual ** 2)) + np.sqrt(np.mean(predicted ** 2))
-        tic_score = num / den
+        tic_score = num / den if den != 0 else 0
         
         mse_val = mean_squared_error(actual, predicted)
-        
-        # Um (Bias)
-        um_num = (np.mean(actual) - np.mean(predicted)) ** 2
-        um = um_num / mse_val
-        
-        # Us (Variance)
+        um = ((np.mean(actual) - np.mean(predicted)) ** 2) / mse_val if mse_val !=0 else 0
         std_act = np.std(actual)
         std_pred = np.std(predicted)
-        us_num = (std_act - std_pred) ** 2
-        us = us_num / mse_val
-        
-        # Uc (Covariance)
+        us = ((std_act - std_pred) ** 2) / mse_val if mse_val !=0 else 0
         uc = 1 - (um + us)
         
         t1, t2, t3, t4 = st.columns(4)
-        t1.metric("TIC (총 불일치도)", f"{tic_score:.4f}", help="0에 가까울수록 완벽한 모델 (0.1 미만 권장)")
-        t2.metric("Um (편향 비율)", f"{um:.4f}", help="오차가 '평균' 차이에서 온 비율 (0에 가까워야 함)")
-        t3.metric("Us (변동 비율)", f"{us:.4f}", help="오차가 '변동폭' 차이에서 온 비율 (0에 가까워야 함)")
-        t4.metric("Uc (랜덤 비율)", f"{uc:.4f}", help="오차가 '랜덤 노이즈'인 비율 (1에 가까울수록 좋음)")
-
-        st.caption("---")
-        if tic_score < 0.1:
-            st.success(f"✅ **매우 우수함:** TIC({tic_score:.4f})가 0.1 미만으로, 예측값이 실제값과 거의 일치합니다.")
-        elif tic_score < 0.3:
-            st.info(f"ℹ️ **양호함:** TIC({tic_score:.4f})가 허용 범위 내에 있습니다.")
-        else:
-            st.warning(f"⚠️ **주의:** 예측 오차가 다소 큽니다.")
-            
-        if um > 0.2:
-            st.error("🚨 **편향(Bias) 경고:** 모델이 값을 전체적으로 너무 높게(혹은 낮게) 예측하고 있습니다.")
-        if us > 0.2:
-            st.warning("⚠️ **변동성(Variance) 경고:** 모델이 데이터의 출렁임을 제대로 따라가지 못하고 있습니다.")
-        if uc > 0.8:
-            st.success("🌟 **이상적인 오차 분포:** 발생한 오차의 대부분이 통제 불가능한 랜덤 노이즈입니다. 모델 구조는 훌륭합니다.")
-
-    # -------------------------------------------------------------------------
-    # 진단 메시지 (Diagnostic Logic) - 국문 적용
-    # -------------------------------------------------------------------------
-    st.markdown("---")
-    gap = r2_score - q2_score
-
-    if r2_score > 0.85 and q2_score < 0.3:
-        st.error(f"⚠️ **과적합 의심 (Overfitting):** 학습은 잘 됐으나 예측력이 떨어집니다. 사이드바의 '오차 허용 범위'를 높여주세요.")
-    
-    elif q2_score >= 0.5:
-        if gap < 0.2:
-             st.success("✅ **고신뢰도 모델 확보 (High Reliability):** 학습 및 예측 성능이 모두 우수합니다.")
-        elif gap < 0.4:
-             st.success("🆗 **유효 모델 (Valid Model):** 예측 성능($Q^2$)이 기준치(0.5)를 상회하여 실전 적용 가능합니다.")
-        else:
-             st.warning(f"⚠️ **격차 주의:** 예측력은 좋으나($Q^2$={q2_score:.2f}), 학습 데이터와의 격차가 큽니다. 추가 검증이 권장됩니다.")
-
-    elif q2_score >= 0.3:
-        st.warning(f"⚠️ **경향성 파악 수준:** $Q^2$ ({q2_score:.2f})가 다소 낮습니다. 정밀한 예측보다는 경향성 확인용으로 사용하세요.")
-
-    else:
-        st.info("ℹ️ **데이터 부족:** 아직 모델이 상관관계를 명확히 찾지 못했습니다. 샘플 수를 늘려주세요.")
+        t1.metric("TIC (총 불일치도)", f"{tic_score:.4f}")
+        t2.metric("Um (편향 비율)", f"{um:.4f}")
+        t3.metric("Us (변동 비율)", f"{us:.4f}")
+        t4.metric("Uc (랜덤 비율)", f"{uc:.4f}")
 
     # -------------------------------------------------------------------------
     # 4. 분석 인사이트 (그래프)
@@ -274,6 +224,7 @@ if uploaded_file is not None:
     
     with col_imp1:
         if model_option == "RSM (다항 회귀)":
+            # RSM 표준화 계수 (단순화)
             temp_scaler = StandardScaler()
             X_sc = temp_scaler.fit_transform(X)
             simple_model = LinearRegression()
@@ -283,7 +234,7 @@ if uploaded_file is not None:
             fig_imp = go.Figure(go.Bar(
                 x=importance, y=X_col_names, orientation='h', marker=dict(color='teal')
             ))
-            fig_imp.update_layout(title="표준화 회귀 계수 (영향력 크기)", xaxis_title="계수 절댓값", margin=dict(l=0, r=0, t=30, b=0))
+            fig_imp.update_layout(title="표준화 회귀 계수 (영향력 크기)", xaxis_title="계수 절댓값")
             st.plotly_chart(fig_imp, use_container_width=True)
 
         elif model_option == "GPR (가우시안 프로세스)":
@@ -296,13 +247,12 @@ if uploaded_file is not None:
                     fig_imp = go.Figure(go.Bar(
                         x=sensitivity, y=X_col_names, orientation='h', marker=dict(color='purple')
                     ))
-                    fig_imp.update_layout(title="변수 민감도 (Sensitivity)", xaxis_title="민감도 (1/LengthScale)", margin=dict(l=0, r=0, t=30, b=0))
+                    fig_imp.update_layout(title="변수 민감도 (Sensitivity)", xaxis_title="민감도 (1/LengthScale)")
                     st.plotly_chart(fig_imp, use_container_width=True)
     
     with col_imp2:
         st.write("**변수 간 상관관계 (Pearson Correlation)**")
         corr_matrix = df[X_col_names + [y_col_name]].corr()
-        
         fig_corr = go.Figure(data=go.Heatmap(
             z=corr_matrix.values,
             x=corr_matrix.columns,
@@ -311,72 +261,55 @@ if uploaded_file is not None:
             text=np.round(corr_matrix.values, 2),
             texttemplate="%{text}", showscale=True
         ))
-        fig_corr.update_layout(height=300, margin=dict(l=0, r=0, t=30, b=0))
+        fig_corr.update_layout(height=300)
         st.plotly_chart(fig_corr, use_container_width=True)
 
-   # -------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # 5. 가상 실험 및 최적화
     # -------------------------------------------------------------------------
     st.markdown("---")
-    st.subheader("🎛️ 가상 실험실 & 공정 최적화 (Virtual Lab)")
+    st.subheader("🎛️ 가상 실험실 & 공정 최적화")
 
     col_sim, col_graph = st.columns([1, 2])
+
+    # 슬라이더 초기화
+    if 'slider_initialized' not in st.session_state:
+        for col in X_col_names:
+            st.session_state[col] = float(df[col].mean())
+            st.session_state[f"{col}_input"] = float(df[col].mean())
+        st.session_state['slider_initialized'] = True
+
+    def update_slider_from_input(key):
+        st.session_state[key] = st.session_state[f"{key}_input"]
+    def update_input_from_slider(key):
+        st.session_state[f"{key}_input"] = st.session_state[key]
+
+    input_values = []
+    bounds = []
 
     with col_sim:
         st.markdown("**🧪 조건 시뮬레이션**")
         
-        for col in X_col_names:
-            if col not in st.session_state:
-                st.session_state[col] = float(df[col].mean())
-
-        # 동기화 함수
-        def update_slider_from_input(key):
-            st.session_state[key] = st.session_state[f"{key}_input"]
-
-        def update_input_from_slider(key):
-            st.session_state[f"{key}_input"] = st.session_state[key]
-
-        input_values = []
-        bounds = []
-
-        for i, col_name in enumerate(X_col_names):
+        for col_name in X_col_names:
             data_min = float(df[col_name].min())
             data_max = float(df[col_name].max())
-            
-            extended_min = data_min * 0.5 
+            extended_min = max(0.0, data_min * 0.5)
             extended_max = data_max * 1.5
-            if data_min >= 0: extended_min = max(0.0, extended_min)
 
+            # 세션 상태가 없으면 초기화 (오류 방지)
             if f"{col_name}_input" not in st.session_state:
-                st.session_state[f"{col_name}_input"] = st.session_state[col_name]
+                st.session_state[f"{col_name}_input"] = float(df[col_name].mean())
+            if col_name not in st.session_state:
+                st.session_state[col_name] = float(df[col_name].mean())
 
-            c1, c2 = st.columns([3, 1])
-            with c1:
-                val = st.slider(
-                    f"{col_name}", 
-                    min_value=extended_min, 
-                    max_value=extended_max, 
-                    key=col_name,
-                    step=0.01,
-                    on_change=update_input_from_slider,
-                    args=(col_name,)
-                )
-            with c2:
-                st.number_input(
-                    "입력",
-                    min_value=extended_min,
-                    max_value=extended_max,
-                    key=f"{col_name}_input",
-                    step=0.01,
-                    label_visibility="collapsed",
-                    on_change=update_slider_from_input,
-                    args=(col_name,)
-                )
+            c1_sl, c2_sl = st.columns([3, 1])
+            with c1_sl:
+                val = st.slider(f"{col_name}", extended_min, extended_max, key=col_name, step=0.01, on_change=update_input_from_slider, args=(col_name,))
+            with c2_sl:
+                st.number_input("입력", extended_min, extended_max, key=f"{col_name}_input", step=0.01, label_visibility="collapsed", on_change=update_slider_from_input, args=(col_name,))
             
             input_values.append(val)
             bounds.append((data_min, data_max))
-            
-        st.markdown("---")
 
         # 실시간 예측
         current_pred_val = 0
@@ -387,16 +320,10 @@ if uploaded_file is not None:
             pred_scaled = model.predict(x_scaled_in)
             current_pred_val = scaler_y.inverse_transform(pred_scaled.reshape(-1, 1))[0][0]
         
-        st.metric(
-            label=f"AI 예측 결과 ({y_col_name})", 
-            value=f"{current_pred_val:.2f}", 
-            delta="실시간 예측값"
-        )
-        
-        st.write("")
-        
-        # 최적화 실행
-        if st.button("🚀 최적 조건 자동 탐색 (Run Optimization)"):
+        st.metric(f"AI 예측 결과 ({y_col_name})", f"{current_pred_val:.2f}")
+
+        # 최적화
+        if st.button("🚀 최적 조건 자동 탐색"):
             def objective_func(x_input):
                 if model_option == "RSM (다항 회귀)":
                     return -model.predict(poly.transform([x_input]))[0]
@@ -408,45 +335,29 @@ if uploaded_file is not None:
             res = minimize(objective_func, input_values, bounds=bounds, method='L-BFGS-B')
             st.session_state['opt_result'] = res
             st.session_state['opt_model'] = model_option
-            
             st.success(f"탐색 완료! 예상 최대값: {-res.fun:.2f}")
-        
+
+        # 결과 적용 버튼
         if st.session_state['opt_result'] is not None and st.session_state['opt_model'] == model_option:
             res = st.session_state['opt_result']
-            
-            st.write("---")
             st.write("**📝 도출된 최적 조건**")
             for i, name in enumerate(X_col_names):
                 st.write(f"- **{name}:** {res.x[i]:.2f}") 
             
-            def set_sliders_to_optimal():
-                for i, name in enumerate(X_col_names):
-                    opt_val = float(res.x[i])
-                    st.session_state[name] = opt_val
-                    st.session_state[f"{name}_input"] = opt_val
+            # 콜백 함수 정의 (위젯 생성 전/후 충돌 방지)
+            def apply_opt_to_sim(opt_res_x, col_names):
+                for i, name in enumerate(col_names):
+                    st.session_state[name] = float(opt_res_x[i])
+                    st.session_state[f"{name}_input"] = float(opt_res_x[i])
 
-            st.button("🔄 이 조건을 시뮬레이터에 적용", on_click=set_sliders_to_optimal)
-            
-            # CSV 다운로드
-            result_dict = {"변수명": X_col_names, "최적값": res.x}
-            res_df = pd.DataFrame(result_dict)
-            new_row = pd.DataFrame([{"변수명": f"예측 {y_col_name}", "최적값": -res.fun}])
-            res_df = pd.concat([res_df, new_row], ignore_index=True)
-            
-            csv = res_df.to_csv(index=False).encode('utf-8-sig')
-            st.download_button(
-                label="💾 최적화 결과 저장 (CSV)",
-                data=csv,
-                file_name='Optimization_Result.csv',
-                mime='text/csv',
-            )
+            # on_click을 사용하여 버튼 클릭 시 즉시 상태 업데이트
+            st.button("🔄 이 조건을 시뮬레이터에 적용", on_click=apply_opt_to_sim, args=(res.x, X_col_names))
 
     # -------------------------------------------------------------------------
-    # 6. 그래프 시각화 (Visualization)
+    # 6. 그래프 시각화 (논문용 포맷 + Plotly 최신 문법 + Jet Colormap 적용)
     # -------------------------------------------------------------------------
     with col_graph:
         st.write(f"**📉 반응 표면 그래프 (3D/2D)**")
-         
         tab1, tab2 = st.tabs(["2D 단면 분석", "3D 표면 분석"])
         
         with tab1:
@@ -458,29 +369,23 @@ if uploaded_file is not None:
             input_grid = np.array([input_values] * 100)
             input_grid[:, x_idx] = x_grid
             
-            y_pred = []
             if model_option == "RSM (다항 회귀)":
                 y_pred = model.predict(poly.transform(input_grid))
-                ax.plot(x_grid, y_pred, 'b-', label='AI 예측 모델', linewidth=2)
+                ax.plot(x_grid, y_pred, 'b-', label='AI 예측', linewidth=2)
             else: 
                 p_sc, s_sc = model.predict(scaler_X.transform(input_grid), return_std=True)
                 y_pred = scaler_y.inverse_transform(p_sc.reshape(-1, 1)).flatten()
                 y_std = s_sc * scaler_y.scale_[0]
                 ax.plot(x_grid, y_pred, 'g-', label='AI 예측 평균', linewidth=2)
-                ax.fill_between(x_grid, y_pred - 1.96*y_std, y_pred + 1.96*y_std, color='green', alpha=0.1, label='95% 신뢰구간')
+                ax.fill_between(x_grid, y_pred - 1.96*y_std, y_pred + 1.96*y_std, color='green', alpha=0.1)
 
-            ax.scatter(df[graph_x_col], df[y_col_name], color='red', s=40, alpha=0.5, label='실제 실험값')
+            ax.scatter(df[graph_x_col], df[y_col_name], color='red', s=40, alpha=0.5, label='실제값')
+            curr_y = current_pred_val
+            ax.scatter(input_values[x_idx], curr_y, color='blue', s=100, edgecolors='white', label='현재값', zorder=10)
             
-            curr_y = 0
-            if model_option == "RSM (다항 회귀)": curr_y = model.predict(poly.transform([input_values]))[0]
-            else: curr_y = scaler_y.inverse_transform(model.predict(scaler_X.transform([input_values])).reshape(-1,1))[0][0]
-            ax.scatter(input_values[x_idx], curr_y, color='blue', s=100, edgecolors='white', label='현재 설정값', zorder=10)
-
             if st.session_state['opt_result'] and st.session_state['opt_model'] == model_option:
                 opt = st.session_state['opt_result']
-                opt_x, opt_y = opt.x[x_idx], -opt.fun
-                ax.scatter(opt_x, opt_y, color='gold', marker='*', s=300, edgecolors='k', label='최적점 (AI)', zorder=10)
-                ax.vlines(x=opt_x, ymin=ax.get_ylim()[0], ymax=opt_y, colors='gold', linestyles='--')
+                ax.scatter(opt.x[x_idx], -opt.fun, color='gold', marker='*', s=300, edgecolors='k', label='최적점')
 
             ax.set_xlabel(graph_x_col)
             ax.set_ylabel(y_col_name)
@@ -488,35 +393,76 @@ if uploaded_file is not None:
             ax.grid(True, linestyle='--', alpha=0.5)
             st.pyplot(fig)
 
+            # ── SigmaPlot 데이터 추출 (2D) ──────────────────────────────
+            with st.expander("📥 SigmaPlot용 데이터 추출 (2D 단면 그래프)"):
+                st.caption("아래 CSV를 SigmaPlot에서 File → Import 하거나, 직접 복사하여 붙여넣기 하세요.")
+
+                # (1) AI 예측 곡선
+                df_2d_curve = pd.DataFrame({
+                    f"X_{graph_x_col}": x_grid,
+                    f"Y_pred_{y_col_name}": y_pred
+                })
+                if model_option == "GPR (가우시안 프로세스)":
+                    df_2d_curve[f"Y_pred_upper_95CI"] = y_pred + 1.96 * y_std
+                    df_2d_curve[f"Y_pred_lower_95CI"] = y_pred - 1.96 * y_std
+
+                # (2) 실제 실험 데이터 (산점)
+                df_2d_scatter = pd.DataFrame({
+                    f"X_{graph_x_col}_exp": df[graph_x_col].values,
+                    f"Y_{y_col_name}_exp": df[y_col_name].values
+                })
+
+                # (3) 현재 입력점
+                df_2d_current = pd.DataFrame({
+                    f"X_current": [input_values[x_idx]],
+                    f"Y_current": [curr_y]
+                })
+
+                # 세 데이터셋을 열 방향으로 합치기 (길이 다를 수 있으므로 concat axis=1)
+                df_2d_export = pd.concat([df_2d_curve, df_2d_scatter, df_2d_current], axis=1)
+
+                # 최적점이 있으면 추가
+                if st.session_state['opt_result'] and st.session_state['opt_model'] == model_option:
+                    opt = st.session_state['opt_result']
+                    df_2d_export[f"X_optimum"] = pd.Series([opt.x[x_idx]])
+                    df_2d_export[f"Y_optimum"] = pd.Series([-opt.fun])
+
+                csv_2d = df_2d_export.to_csv(index=False).encode('utf-8-sig')
+                st.dataframe(df_2d_export.head(10), use_container_width=True)
+                st.download_button(
+                    label="⬇️ CSV 다운로드 (2D 단면 그래프)",
+                    data=csv_2d,
+                    file_name=f"sigmaplot_2D_{graph_x_col}_vs_{y_col_name}.csv",
+                    mime="text/csv",
+                    key="dl_2d"
+                )
+
         with tab2:
             if len(X_col_names) < 2:
-                st.warning("⚠️ 3D 그래프를 그리려면 최소 2개의 변수가 필요합니다.")
+                st.warning("⚠️ 3D plots require at least 2 variables.")
             else:
+                st.markdown("### 🖼️ Publication-Ready 3D Plot")
+                
                 c1, c2 = st.columns(2)
-                x_axis = c1.selectbox("X축", X_col_names, index=0, key="3d_x")
-                y_axis = c2.selectbox("Y축", X_col_names, index=1, key="3d_y")
+                x_axis = c1.selectbox("X-axis Variable", X_col_names, index=0, key="3d_x")
+                y_axis = c2.selectbox("Y-axis Variable", X_col_names, index=1, key="3d_y")
 
                 if x_axis == y_axis:
-                    st.error("X축과 Y축은 서로 다른 변수여야 합니다.")
+                    st.error("Please select different variables for X and Y axes.")
                 else:
-                    fixed_vars = [col for col in X_col_names if col not in [x_axis, y_axis]]
-                    if fixed_vars:
-                        fixed_str = ", ".join([f"{col}={input_values[X_col_names.index(col)]:.2f}" for col in fixed_vars])
-                        st.caption(f"ℹ️ **고정된 변수 (현재 슬라이더 값):** {fixed_str}")
-
+                    # 1. 데이터 범위 설정
                     x_min, x_max = df[x_axis].min(), df[x_axis].max()
                     y_min, y_max = df[y_axis].min(), df[y_axis].max()
-                    padding_x = (x_max - x_min) * 0.1
-                    padding_y = (y_max - y_min) * 0.1
                     
-                    resolution = 60 
-                    x_range = np.linspace(x_min - padding_x, x_max + padding_x, resolution)
-                    y_range = np.linspace(y_min - padding_y, y_max + padding_y, resolution)
+                    pad_x, pad_y = (x_max - x_min)*0.1, (y_max - y_min)*0.1
+                    x_range = np.linspace(x_min - pad_x, x_max + pad_x, 60) 
+                    y_range = np.linspace(y_min - pad_y, y_max + pad_y, 60)
                     X_mesh, Y_mesh = np.meshgrid(x_range, y_range)
                     
                     idx_x, idx_y = X_col_names.index(x_axis), X_col_names.index(y_axis)
                     Z_mesh = np.zeros_like(X_mesh)
                     
+                    # 2. 예측값 계산
                     for i in range(X_mesh.shape[0]):
                         for j in range(X_mesh.shape[1]):
                             temp_in = input_values.copy()
@@ -528,43 +474,182 @@ if uploaded_file is not None:
                                 p = model.predict(scaler_X.transform([temp_in]))
                                 Z_mesh[i, j] = scaler_y.inverse_transform(p.reshape(-1,1))[0][0]
 
-                    fig_3d = go.Figure(data=[go.Surface(
-                        z=Z_mesh, x=X_mesh, y=Y_mesh, 
-                        colorscale='Viridis', opacity=0.8, name='AI 예측 표면',
-                        contours = {"z": {"show": True, "start": 0, "end": 200, "size": 2, "color":"white"}},
-                        colorbar=dict(title=dict(text=y_col_name, side="right"))
-                    )])
-                    
-                    fig_3d.add_trace(go.Scatter3d(
-                        x=df[x_axis], y=df[y_axis], z=df[y_col_name],
-                        mode='markers', marker=dict(size=5, color='red', line=dict(color='white', width=1)), name='실제 실험값'
+                    # 3. 그래프 그리기
+                    fig_3d = go.Figure()
+
+                    # (1) 반응 표면 (Surface) - Jet Colormap
+                    fig_3d.add_trace(go.Surface(
+                        z=Z_mesh, x=X_mesh, y=Y_mesh,
+                        colorscale='Jet', 
+                        opacity=0.8,
+                        colorbar=dict(
+                            title=dict(text='Adsorption (mg/g)', font=dict(size=14)),
+                            tickfont=dict(size=12),
+                            len=0.8
+                        )
                     ))
 
+                    # (2) 실제 실험 데이터 (Experimental Data)
+                    fig_3d.add_trace(go.Scatter3d(
+                        x=df[x_axis], y=df[y_axis], z=df[y_col_name],
+                        mode='markers',
+                        marker=dict(
+                            size=5, 
+                            color='black', 
+                            symbol='circle', 
+                            line=dict(color='white', width=1)
+                        ),
+                        name='Experimental Data'
+                    ))
+                    
+                    # (3) 최적점 표시 (Optimum Point)
                     if st.session_state['opt_result'] and st.session_state['opt_model'] == model_option:
                         opt = st.session_state['opt_result']
-                        opt_x, opt_y, opt_z = opt.x[idx_x], opt.x[idx_y], -opt.fun
+                        opt_val = -opt.fun
                         
                         fig_3d.add_trace(go.Scatter3d(
-                            x=[opt_x], y=[opt_y], z=[opt_z],
+                            x=[opt.x[idx_x]], y=[opt.x[idx_y]], z=[opt_val],
                             mode='markers+text',
+                            text=[f"Max: {opt_val:.2f}"], 
+                            textposition="top center", 
+                            textfont=dict(size=14, color="black", family="Arial Black"),
                             marker=dict(
-                                size=8, color='#FF00FF', symbol='square', 
+                                size=12, 
+                                color='red', 
+                                symbol='diamond',
                                 line=dict(color='white', width=2)
                             ),
-                            text=[f"★ 최적값\n{opt_z:.2f}"], 
-                            textposition="top center",
-                            textfont=dict(color='black', size=12, family="Arial Black"),
-                            name='AI 도출 최적점'
+                            name='AI Predicted Optimum'
                         ))
 
+                    # 4. 레이아웃 설정
                     fig_3d.update_layout(
-                        title=f"3D 반응 표면 그래프 ({x_axis} vs {y_axis})",
-                        scene=dict(xaxis_title=x_axis, yaxis_title=y_axis, zaxis_title=y_col_name, aspectmode='cube'),
-                        width=800, height=600,
-                        margin=dict(l=0, r=0, b=50, t=40),
-                        legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5)
+                        title={
+                            'text': f"Response Surface Plot: {x_axis} vs {y_axis}",
+                            'y':0.9, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top',
+                            'font': dict(size=20, family="Arial")
+                        },
+                        scene=dict(
+                            xaxis=dict(
+                                title=dict(text=f"{x_axis} (%)", font=dict(size=14)),
+                                tickfont=dict(size=12), 
+                                backgroundcolor="white"
+                            ),
+                            yaxis=dict(
+                                title=dict(text=f"{y_axis} (mL)" if "ECH" in y_axis else f"{y_axis} (%)", font=dict(size=14)),
+                                tickfont=dict(size=12), 
+                                backgroundcolor="white"
+                            ),
+                            zaxis=dict(
+                                title=dict(text="q (mg/g)", font=dict(size=14)),
+                                tickfont=dict(size=12), 
+                                backgroundcolor="white"
+                            ),
+                            aspectratio=dict(x=1, y=1, z=0.8)
+                        ),
+                        width=900, height=700,
+                        margin=dict(l=0, r=0, b=0, t=50),
+                        legend=dict(x=0.7, y=0.9, font=dict(size=14)),
+                        template='plotly_white'
                     )
-                    st.plotly_chart(fig_3d)
 
-else:
-    st.info("👈 왼쪽 사이드바에서 실험 데이터(CSV)를 업로드해주세요.")
+                    st.plotly_chart(fig_3d, use_container_width=True)
+
+                    # ── SigmaPlot 데이터 추출 (3D) ───────────────────────────
+                    with st.expander("📥 SigmaPlot용 데이터 추출 (3D 반응 표면 그래프)"):
+                        st.caption("SigmaPlot 3D Mesh/Surface 또는 Scatter 3D 그래프에 사용할 수 있는 CSV입니다.")
+
+                        # (1) Surface mesh 데이터: X, Y, Z 컬럼으로 flatten
+                        x_flat = X_mesh.flatten()
+                        y_flat = Y_mesh.flatten()
+                        z_flat = Z_mesh.flatten()
+                        df_3d_surface = pd.DataFrame({
+                            f"X_{x_axis}": x_flat,
+                            f"Y_{y_axis}": y_flat,
+                            f"Z_{y_col_name}_pred": z_flat
+                        })
+
+                        # (2) 실험 데이터 산점
+                        df_3d_scatter = pd.DataFrame({
+                            f"X_{x_axis}_exp": df[x_axis].values,
+                            f"Y_{y_axis}_exp": df[y_axis].values,
+                            f"Z_{y_col_name}_exp": df[y_col_name].values
+                        })
+
+                        # 두 시트를 별도 탭으로 보여주기
+                        tab_surf, tab_scat = st.tabs(["Surface Mesh 데이터", "Experimental Scatter 데이터"])
+                        with tab_surf:
+                            st.dataframe(df_3d_surface.head(20), use_container_width=True)
+                            csv_surf = df_3d_surface.to_csv(index=False).encode('utf-8-sig')
+                            st.download_button(
+                                label="⬇️ CSV 다운로드 (3D Surface Mesh)",
+                                data=csv_surf,
+                                file_name=f"sigmaplot_3D_surface_{x_axis}_vs_{y_axis}.csv",
+                                mime="text/csv",
+                                key="dl_3d_surf"
+                            )
+                        with tab_scat:
+                            st.dataframe(df_3d_scatter, use_container_width=True)
+                            csv_scat = df_3d_scatter.to_csv(index=False).encode('utf-8-sig')
+                            st.download_button(
+                                label="⬇️ CSV 다운로드 (3D Experimental Scatter)",
+                                data=csv_scat,
+                                file_name=f"sigmaplot_3D_scatter_{x_axis}_vs_{y_axis}.csv",
+                                mime="text/csv",
+                                key="dl_3d_scat"
+                            )
+
+                        # (3) 최적점 있으면 함께 출력
+                        if st.session_state['opt_result'] and st.session_state['opt_model'] == model_option:
+                            opt = st.session_state['opt_result']
+                            df_3d_opt = pd.DataFrame({
+                                f"X_{x_axis}_opt": [opt.x[idx_x]],
+                                f"Y_{y_axis}_opt": [opt.x[idx_y]],
+                                f"Z_{y_col_name}_opt": [-opt.fun]
+                            })
+                            st.markdown("**최적점 좌표**")
+                            st.dataframe(df_3d_opt, use_container_width=True)
+                            csv_opt = df_3d_opt.to_csv(index=False).encode('utf-8-sig')
+                            st.download_button(
+                                label="⬇️ CSV 다운로드 (최적점)",
+                                data=csv_opt,
+                                file_name=f"sigmaplot_3D_optimum_{x_axis}_vs_{y_axis}.csv",
+                                mime="text/csv",
+                                key="dl_3d_opt"
+                            )
+
+    # -------------------------------------------------------------------------
+    # [추가된 기능] 7. 논문 작성용 RSM 수식 계수 확인
+    # -------------------------------------------------------------------------
+    if model_option == "RSM (다항 회귀)" and 'real_rsm_reg' in st.session_state:
+        st.markdown("---")
+        st.subheader("📊 논문 작성용 RSM 수식 계수 확인 (Coefficients)")
+        st.info("💡 Design Expert의 'Actual Equation'과 비교하기 위한 실제 계수표입니다. (Alpha=0 설정 필수)")
+
+        try:
+            reg_model = st.session_state['real_rsm_reg']
+            poly_features = st.session_state['real_rsm_poly']
+            input_names = st.session_state['real_rsm_names']
+
+            # 1. 변수명 생성
+            feature_names = poly_features.get_feature_names_out(input_names)
+
+            # 2. 계수 및 절편 추출
+            coefs = reg_model.coef_
+            intercept = reg_model.intercept_
+            
+            if coefs.ndim > 1:
+                coefs = coefs.flatten()
+
+            # 3. 데이터프레임 생성
+            data_rows = [{"항 (Term)": "Intercept", "계수 (Coefficient)": intercept}]
+            for name, val in zip(feature_names, coefs):
+                data_rows.append({"항 (Term)": name, "계수 (Coefficient)": val})
+
+            df_final = pd.DataFrame(data_rows)
+
+            # 4. 소수점 포맷팅 및 출력
+            st.table(df_final.style.format({"계수 (Coefficient)": "{:.4f}"}))
+
+        except Exception as e:
+            st.error(f"계수 추출 중 오류가 발생했습니다: {e}")
