@@ -559,36 +559,45 @@ if uploaded_file is not None:
                     with st.expander("📥 SigmaPlot용 데이터 추출 (3D 반응 표면 그래프)"):
                         st.caption("SigmaPlot 3D Mesh/Surface 또는 Scatter 3D 그래프에 사용할 수 있는 CSV입니다.")
 
-                        # (1) Surface mesh 데이터: X, Y, Z 컬럼으로 flatten
-                        x_flat = X_mesh.flatten()
-                        y_flat = Y_mesh.flatten()
-                        z_flat = Z_mesh.flatten()
-                        df_3d_surface = pd.DataFrame({
-                            f"X_{x_axis}": x_flat,
-                            f"Y_{y_axis}": y_flat,
-                            f"Z_{y_col_name}_pred": z_flat
-                        })
+                        # ── (1) SigmaPlot Matrix 형식 (행=X, 열=Y, 셀=Z) ──
+                        # SigmaPlot 3D Surface는 피벗 테이블(Grid) 구조를 요구함
+                        # 첫 번째 행: Y값 헤더 (빈 셀 + Y값들)
+                        # 이후 행: X값 | Z값들
+                        y_labels = np.round(y_range, 4)   # 열 헤더 = Y축 값
+                        x_labels = np.round(x_range, 4)   # 행 인덱스 = X축 값
 
-                        # (2) 실험 데이터 산점
+                        # Z_mesh shape: (len(y_range), len(x_range)) — meshgrid 구조
+                        # SigmaPlot: 행이 X, 열이 Y → Z_mesh.T 사용
+                        df_pivot = pd.DataFrame(
+                            Z_mesh.T,
+                            index=x_labels,
+                            columns=y_labels
+                        )
+                        df_pivot.index.name = f"{x_axis} \\ {y_axis}"
+
+                        # ── (2) 실험 데이터 산점 (XYZ 3열) ──
                         df_3d_scatter = pd.DataFrame({
                             f"X_{x_axis}_exp": df[x_axis].values,
                             f"Y_{y_axis}_exp": df[y_axis].values,
                             f"Z_{y_col_name}_exp": df[y_col_name].values
                         })
 
-                        # 두 시트를 별도 탭으로 보여주기
-                        tab_surf, tab_scat = st.tabs(["Surface Mesh 데이터", "Experimental Scatter 데이터"])
+                        # 두 탭으로 분리 출력
+                        tab_surf, tab_scat = st.tabs(["Surface Matrix (SigmaPlot용)", "Experimental Scatter 데이터"])
                         with tab_surf:
-                            st.dataframe(df_3d_surface.head(20), use_container_width=True)
-                            csv_surf = df_3d_surface.to_csv(index=False).encode('utf-8-sig')
+                            st.caption(f"📌 행(Row) = {x_axis} 값 / 열(Column) = {y_axis} 값 / 셀 = 예측 {y_col_name}")
+                            st.caption("SigmaPlot: Graph → 3D → Surface Plot → XYZ Matrix 선택 후 이 데이터를 붙여넣기")
+                            st.dataframe(df_pivot.iloc[:10, :10], use_container_width=True)
+                            csv_surf = df_pivot.to_csv().encode('utf-8-sig')
                             st.download_button(
-                                label="⬇️ CSV 다운로드 (3D Surface Mesh)",
+                                label="⬇️ CSV 다운로드 (3D Surface Matrix)",
                                 data=csv_surf,
                                 file_name=f"sigmaplot_3D_surface_{x_axis}_vs_{y_axis}.csv",
                                 mime="text/csv",
                                 key="dl_3d_surf"
                             )
                         with tab_scat:
+                            st.caption("📌 SigmaPlot: Graph → 3D → Scatter Plot → XYZ 3열 선택")
                             st.dataframe(df_3d_scatter, use_container_width=True)
                             csv_scat = df_3d_scatter.to_csv(index=False).encode('utf-8-sig')
                             st.download_button(
